@@ -7,6 +7,9 @@
     sysadmin_password: "{{ lookup('env', 'SYSADMIN_PASSWORD') }}"
     token_signing_key: "{{ lookup('env', 'JWT_SIGNING_KEY') }}"
     tenant_name: "{{ lookup('env', 'TENANT_NAME') }}"
+    fuseki_username: "{{ lookup('env', 'FUSEKI_USERNAME') }}"
+    fuseki_password: "{{ lookup('env', 'FUSEKI_PASSWORD') }}"
+    fuseki_url: "{{ lookup('env', 'FUSEKI_URL') }}"
     thing_desciber_kafka_servers: "{{ lookup('env', 'THING_DESCRIBER_KAFKA_SERVERS') }}"
     oauth2_endpoint_scheme: "{{ lookup('env', 'OAUTH2_SCHEME') }}"
     oauth2_domain_name: "{{ lookup('env', 'OAUTH2_DOMAIN_NAME') }}"
@@ -212,37 +215,53 @@
           ruleChains:
           - id:
               entityType: RULE_CHAIN
-              id: 4f791f00-b31f-11ee-924d-a56df7558169
-            createdTime: 1697661769797
+              id: eb4a6bc0-b32c-11ee-a06b-2da4a5a81ce2
+            createdTime: 1705269957128
+            additionalInfo:
+              description: ''
+            tenantId:
+            name: Fuseki Customer Sync
+            type: CORE
+            firstRuleNodeId:
+              entityType: RULE_NODE
+              id: 319d1300-b32a-11ee-a06b-2da4a5a81ce2
+            root: false
+            debugMode: false
+            configuration:
+            externalId:
+          - id:
+              entityType: RULE_CHAIN
+              id: eb4a6bc1-b32c-11ee-a06b-2da4a5a81ce2
+            createdTime: 1705269857923
             additionalInfo:
             tenantId:
             name: Root Rule Chain
             type: CORE
             firstRuleNodeId:
               entityType: RULE_NODE
-              id: e6ecb900-6df6-11ee-9f16-59245f967c10
+              id: dd7b1980-b328-11ee-a06b-2da4a5a81ce2
             root: true
             debugMode: false
             configuration:
             externalId:
           - id:
               entityType: RULE_CHAIN
-              id: 4f791f01-b31f-11ee-924d-a56df7558169
-            createdTime: 1697661769899
+              id: eb4a6bc2-b32c-11ee-a06b-2da4a5a81ce2
+            createdTime: 1705269857974
             additionalInfo:
             tenantId:
             name: Edge Root Rule Chain
             type: EDGE
             firstRuleNodeId:
               entityType: RULE_NODE
-              id: e6f2d380-6df6-11ee-9f16-59245f967c10
+              id: dd9afd90-b328-11ee-a06b-2da4a5a81ce2
             root: true
             debugMode: false
             configuration:
             externalId:
           - id:
               entityType: RULE_CHAIN
-              id: 4f791f02-b31f-11ee-924d-a56df7558169
+              id: eb4a6bc3-b32c-11ee-a06b-2da4a5a81ce2
             createdTime: 1697661800067
             additionalInfo:
               description: ''
@@ -251,7 +270,7 @@
             type: CORE
             firstRuleNodeId:
               entityType: RULE_NODE
-              id: f8f91580-6df6-11ee-9f16-59245f967c10
+              id: ddaadc10-b328-11ee-a06b-2da4a5a81ce2
             root: false
             debugMode: false
             configuration:
@@ -259,11 +278,154 @@
           metadata:
           - ruleChainId:
               entityType: RULE_CHAIN
-              id: 4f791f00-b31f-11ee-924d-a56df7558169
+              id: eb4a6bc0-b32c-11ee-a06b-2da4a5a81ce2
+            firstNodeIndex: 0
+            nodes:
+            - id:
+              createdTime: 1705270429744
+              additionalInfo:
+                description: ''
+                layoutX: 333
+                layoutY: 151
+              ruleChainId:
+              type: org.thingsboard.rule.engine.filter.TbOriginatorTypeFilterNode
+              name: Filter Customer Type
+              debugMode: false
+              singletonMode: false
+              configurationVersion: 0
+              configuration:
+                originatorTypes:
+                - CUSTOMER
+              externalId:
+            - id:
+              createdTime: 1705270823685
+              additionalInfo:
+                description: ''
+                layoutX: 915
+                layoutY: 321
+              ruleChainId:
+              type: org.thingsboard.rule.engine.rest.TbRestApiCallNode
+              name: Create Dataset
+              debugMode: false
+              singletonMode: false
+              configurationVersion: 1
+              configuration:
+                restEndpointUrlPattern: "{{ fuseki_url }}/$/datasets"
+                requestMethod: POST
+                useSimpleClientHttpFactory: false
+                parseToPlainText: true
+                ignoreRequestBody: false
+                enableProxy: false
+                useSystemProxyProperties: false
+                proxyScheme:
+                proxyHost:
+                proxyPort: 0
+                proxyUser:
+                proxyPassword:
+                readTimeoutMs: 0
+                maxParallelRequestsCount: 0
+                headers:
+                  Content-Type: application/x-www-form-urlencoded
+                useRedisQueueForMsgPersistence: false
+                trimQueue:
+                maxQueueSize:
+                credentials:
+                  type: basic
+                  username: "{{ fuseki_username }}"
+                  password: "{{ fuseki_password }}"
+              externalId:
+            - id:
+              createdTime: 1705270823692
+              additionalInfo:
+                description: ''
+                layoutX: 547
+                layoutY: 323
+              ruleChainId:
+              type: org.thingsboard.rule.engine.transform.TbTransformMsgNode
+              name: Set Payload
+              debugMode: false
+              singletonMode: false
+              configurationVersion: 0
+              configuration:
+                scriptLang: JS
+                jsScript: 'return {msg: `dbName={{ tenant_name }}-${metadata.entityName}&dbType=tdb2`,
+                  metadata: metadata, msgType: msgType};'
+                tbelScript: 'return {msg: "dbName={{ tenant_name }}-customer&dbType=tdb2", metadata: metadata,
+                  msgType: msgType};'
+              externalId:
+            - id:
+              createdTime: 1705270823695
+              additionalInfo:
+                description: ''
+                layoutX: 132
+                layoutY: 325
+              ruleChainId:
+              type: org.thingsboard.rule.engine.filter.TbMsgTypeSwitchNode
+              name: Filter Message Type
+              debugMode: false
+              singletonMode: false
+              configurationVersion: 0
+              configuration:
+                version: 0
+              externalId:
+            - id:
+              createdTime: 1705271456978
+              additionalInfo:
+                description: ''
+                layoutX: 550
+                layoutY: 493
+              ruleChainId:
+              type: org.thingsboard.rule.engine.rest.TbRestApiCallNode
+              name: Delete Dataset
+              debugMode: false
+              singletonMode: false
+              configurationVersion: 1
+              configuration:
+                restEndpointUrlPattern: "{{ fuseki_url }}/$/datasets/{{ tenant_name }}-${entityName}"
+                requestMethod: DELETE
+                useSimpleClientHttpFactory: false
+                parseToPlainText: false
+                ignoreRequestBody: false
+                enableProxy: false
+                useSystemProxyProperties: false
+                proxyScheme:
+                proxyHost:
+                proxyPort: 0
+                proxyUser:
+                proxyPassword:
+                readTimeoutMs: 0
+                maxParallelRequestsCount: 0
+                headers:
+                  Content-Type: application/x-www-form-urlencoded
+                useRedisQueueForMsgPersistence: false
+                trimQueue:
+                maxQueueSize:
+                credentials:
+                  type: basic
+                  username: "{{ fuseki_username }}"
+                  password: "{{ fuseki_password }}"
+              externalId:
+            connections:
+            - fromIndex: 0
+              toIndex: 3
+              type: 'True'
+            - fromIndex: 2
+              toIndex: 1
+              type: Success
+            - fromIndex: 3
+              toIndex: 2
+              type: Entity Created
+            - fromIndex: 3
+              toIndex: 4
+              type: Entity Deleted
+            ruleChainConnections:
+          - ruleChainId:
+              entityType: RULE_CHAIN
+              id: eb4a6bc1-b32c-11ee-a06b-2da4a5a81ce2
             firstNodeIndex: 6
             nodes:
             - id:
-              createdTime: 1697661769846
+              createdTime: 1705269859080
               additionalInfo:
                 description:
                 layoutX: 824
@@ -273,11 +435,12 @@
               name: Save Timeseries
               debugMode: false
               singletonMode: false
+              configurationVersion: 0
               configuration:
                 defaultTTL: 0
               externalId:
             - id:
-              createdTime: 1697661769860
+              createdTime: 1705269859083
               additionalInfo:
                 layoutX: 825
                 layoutY: 52
@@ -286,12 +449,15 @@
               name: Save Client Attributes
               debugMode: false
               singletonMode: false
+              configurationVersion: 2
               configuration:
                 scope: CLIENT_SCOPE
-                notifyDevice: 'false'
+                notifyDevice: false
+                updateAttributesOnlyOnValueChange: false
+                sendAttributesUpdatedNotification: false
               externalId:
             - id:
-              createdTime: 1697661769862
+              createdTime: 1705269859086
               additionalInfo:
                 layoutX: 347
                 layoutY: 149
@@ -300,11 +466,12 @@
               name: Message Type Switch
               debugMode: false
               singletonMode: false
+              configurationVersion: 0
               configuration:
                 version: 0
               externalId:
             - id:
-              createdTime: 1697661769865
+              createdTime: 1705269859089
               additionalInfo:
                 layoutX: 825
                 layoutY: 266
@@ -313,6 +480,7 @@
               name: Log RPC from Device
               debugMode: false
               singletonMode: false
+              configurationVersion: 0
               configuration:
                 scriptLang: TBEL
                 jsScript: return '\nIncoming message:\n' + JSON.stringify(msg) + '\nIncoming
@@ -321,7 +489,7 @@
                   metadata:\n' + JSON.stringify(metadata);
               externalId:
             - id:
-              createdTime: 1697661769867
+              createdTime: 1705269859092
               additionalInfo:
                 layoutX: 825
                 layoutY: 379
@@ -330,6 +498,7 @@
               name: Log Other
               debugMode: false
               singletonMode: false
+              configurationVersion: 0
               configuration:
                 scriptLang: TBEL
                 jsScript: return '\nIncoming message:\n' + JSON.stringify(msg) + '\nIncoming
@@ -338,7 +507,7 @@
                   metadata:\n' + JSON.stringify(metadata);
               externalId:
             - id:
-              createdTime: 1697661769870
+              createdTime: 1705269859094
               additionalInfo:
                 layoutX: 825
                 layoutY: 468
@@ -347,11 +516,12 @@
               name: RPC Call Request
               debugMode: false
               singletonMode: false
+              configurationVersion: 0
               configuration:
                 timeoutInSeconds: 60
               externalId:
             - id:
-              createdTime: 1697661769872
+              createdTime: 1705269859096
               additionalInfo:
                 description: Process incoming messages from devices with the alarm rules defined
                   in the device profile. Dispatch all incoming messages with "Success" relation
@@ -363,12 +533,13 @@
               name: Device Profile Node
               debugMode: false
               singletonMode: false
+              configurationVersion: 0
               configuration:
                 persistAlarmRulesState: false
                 fetchAlarmRulesStateOnStart: false
               externalId:
             - id:
-              createdTime: 1697661848082
+              createdTime: 1705269859099
               additionalInfo:
                 description: ''
                 layoutX: 305
@@ -378,8 +549,24 @@
               name: Thing Registry Sync
               debugMode: false
               singletonMode: false
+              configurationVersion: 0
               configuration:
-                ruleChainId: 4f791f02-b31f-11ee-924d-a56df7558169
+                ruleChainId: eb4a6bc3-b32c-11ee-a06b-2da4a5a81ce2
+              externalId:
+            - id:
+              createdTime: 1705270312830
+              additionalInfo:
+                description: ''
+                layoutX: 583
+                layoutY: 665
+              ruleChainId:
+              type: org.thingsboard.rule.engine.flow.TbRuleChainInputNode
+              name: Fuseki Customer Sync
+              debugMode: false
+              singletonMode: false
+              configurationVersion: 0
+              configuration:
+                ruleChainId: eb4a6bc0-b32c-11ee-a06b-2da4a5a81ce2
               externalId:
             connections:
             - fromIndex: 2
@@ -415,17 +602,23 @@
             - fromIndex: 2
               toIndex: 7
               type: Post attributes
+            - fromIndex: 2
+              toIndex: 8
+              type: Entity Created
+            - fromIndex: 2
+              toIndex: 8
+              type: Entity Deleted
             - fromIndex: 6
               toIndex: 2
               type: Success
             ruleChainConnections:
           - ruleChainId:
               entityType: RULE_CHAIN
-              id: 4f791f01-b31f-11ee-924d-a56df7558169
+              id: eb4a6bc2-b32c-11ee-a06b-2da4a5a81ce2
             firstNodeIndex: 0
             nodes:
             - id:
-              createdTime: 1697661769912
+              createdTime: 1705269859305
               additionalInfo:
                 description: Process incoming messages from devices with the alarm rules defined
                   in the device profile. Dispatch all incoming messages with "Success" relation
@@ -437,12 +630,13 @@
               name: Device Profile Node
               debugMode: false
               singletonMode: false
+              configurationVersion: 0
               configuration:
                 persistAlarmRulesState: false
                 fetchAlarmRulesStateOnStart: false
               externalId:
             - id:
-              createdTime: 1697661769915
+              createdTime: 1705269859308
               additionalInfo:
                 layoutX: 823
                 layoutY: 157
@@ -451,11 +645,12 @@
               name: Save Timeseries
               debugMode: false
               singletonMode: false
+              configurationVersion: 0
               configuration:
                 defaultTTL: 0
               externalId:
             - id:
-              createdTime: 1697661769917
+              createdTime: 1705269859316
               additionalInfo:
                 layoutX: 824
                 layoutY: 52
@@ -464,12 +659,15 @@
               name: Save Client Attributes
               debugMode: false
               singletonMode: false
+              configurationVersion: 2
               configuration:
                 scope: CLIENT_SCOPE
-                notifyDevice: 'false'
+                notifyDevice: false
+                updateAttributesOnlyOnValueChange: false
+                sendAttributesUpdatedNotification: false
               externalId:
             - id:
-              createdTime: 1697661769919
+              createdTime: 1705269859319
               additionalInfo:
                 layoutX: 347
                 layoutY: 149
@@ -478,11 +676,12 @@
               name: Message Type Switch
               debugMode: false
               singletonMode: false
+              configurationVersion: 0
               configuration:
                 version: 0
               externalId:
             - id:
-              createdTime: 1697661769921
+              createdTime: 1705269859321
               additionalInfo:
                 layoutX: 825
                 layoutY: 266
@@ -491,6 +690,7 @@
               name: Log RPC from Device
               debugMode: false
               singletonMode: false
+              configurationVersion: 0
               configuration:
                 scriptLang: TBEL
                 jsScript: return '\nIncoming message:\n' + JSON.stringify(msg) + '\nIncoming
@@ -499,7 +699,7 @@
                   metadata:\n' + JSON.stringify(metadata);
               externalId:
             - id:
-              createdTime: 1697661769923
+              createdTime: 1705269859324
               additionalInfo:
                 layoutX: 824
                 layoutY: 378
@@ -508,6 +708,7 @@
               name: Log Other
               debugMode: false
               singletonMode: false
+              configurationVersion: 0
               configuration:
                 scriptLang: TBEL
                 jsScript: return '\nIncoming message:\n' + JSON.stringify(msg) + '\nIncoming
@@ -516,7 +717,7 @@
                   metadata:\n' + JSON.stringify(metadata);
               externalId:
             - id:
-              createdTime: 1697661769925
+              createdTime: 1705269859327
               additionalInfo:
                 layoutX: 824
                 layoutY: 466
@@ -525,11 +726,12 @@
               name: RPC Call Request
               debugMode: false
               singletonMode: false
+              configurationVersion: 0
               configuration:
                 timeoutInSeconds: 60
               externalId:
             - id:
-              createdTime: 1697661769927
+              createdTime: 1705269859335
               additionalInfo:
                 layoutX: 1126
                 layoutY: 104
@@ -538,11 +740,12 @@
               name: Push to cloud
               debugMode: false
               singletonMode: false
+              configurationVersion: 0
               configuration:
                 scope: SERVER_SCOPE
               externalId:
             - id:
-              createdTime: 1697661769929
+              createdTime: 1705269859338
               additionalInfo:
                 layoutX: 826
                 layoutY: 601
@@ -551,6 +754,7 @@
               name: Push to cloud
               debugMode: false
               singletonMode: false
+              configurationVersion: 0
               configuration:
                 scope: SERVER_SCOPE
               externalId:
@@ -588,11 +792,11 @@
             ruleChainConnections:
           - ruleChainId:
               entityType: RULE_CHAIN
-              id: 4f791f02-b31f-11ee-924d-a56df7558169
+              id: eb4a6bc3-b32c-11ee-a06b-2da4a5a81ce2
             firstNodeIndex: 3
             nodes:
             - id:
-              createdTime: 1697661800141
+              createdTime: 1705269859400
               additionalInfo:
                 description: ''
                 layoutX: 29
@@ -602,11 +806,12 @@
               name: Add Credentials
               debugMode: false
               singletonMode: false
+              configurationVersion: 1
               configuration:
-                fetchToMetadata: true
+                fetchTo: METADATA
               externalId:
             - id:
-              createdTime: 1697661800147
+              createdTime: 1705269859403
               additionalInfo:
                 description: ''
                 layoutX: 335
@@ -616,15 +821,17 @@
               name: Add Originator
               debugMode: false
               singletonMode: false
+              configurationVersion: 1
               configuration:
-                fieldsMapping:
+                ignoreNullStrings: false
+                dataMapping:
                   name: originatorName
                   type: originatorType
                   id: originatorId
-                ignoreNullStrings: false
+                fetchTo: METADATA
               externalId:
             - id:
-              createdTime: 1697661800150
+              createdTime: 1705269859406
               additionalInfo:
                 description: ''
                 layoutX: 1240
@@ -634,14 +841,15 @@
               name: Add Tenant Details
               debugMode: false
               singletonMode: false
+              configurationVersion: 1
               configuration:
                 detailsList:
                 - TITLE
                 - ID
-                addToMetadata: true
+                fetchTo: METADATA
               externalId:
             - id:
-              createdTime: 1697661800152
+              createdTime: 1705269859409
               additionalInfo:
                 description: ''
                 layoutX: 300
@@ -651,11 +859,12 @@
               name: Filter Messag Type
               debugMode: false
               singletonMode: false
+              configurationVersion: 0
               configuration:
                 version: 0
               externalId:
             - id:
-              createdTime: 1697661800154
+              createdTime: 1705269859412
               additionalInfo:
                 description: ''
                 layoutX: 900
@@ -665,6 +874,7 @@
               name: Filter Thing Model
               debugMode: false
               singletonMode: false
+              configurationVersion: 0
               configuration:
                 scriptLang: JS
                 jsScript: |-
@@ -678,7 +888,7 @@
                 tbelScript: return msg.temperature > 20;
               externalId:
             - id:
-              createdTime: 1697661800156
+              createdTime: 1705269859414
               additionalInfo:
                 description: ''
                 layoutX: 864
@@ -688,6 +898,7 @@
               name: Add Type To Metadata
               debugMode: false
               singletonMode: false
+              configurationVersion: 0
               configuration:
                 scriptLang: JS
                 jsScript: |-
@@ -696,7 +907,7 @@
                 tbelScript: 'return {msg: msg, metadata: metadata, msgType: msgType};'
               externalId:
             - id:
-              createdTime: 1697661800158
+              createdTime: 1705269859417
               additionalInfo:
                 description: ''
                 layoutX: 632
@@ -706,9 +917,9 @@
               name: Add Attributes
               debugMode: false
               singletonMode: false
+              configurationVersion: 1
               configuration:
                 tellFailureIfAbsent: false
-                fetchToData: true
                 clientAttributeNames:
                 - thing-model
                 - thing-metadata
@@ -720,9 +931,10 @@
                 - thing-metadata
                 latestTsKeyNames: []
                 getLatestValueWithTs: false
+                fetchTo: DATA
               externalId:
             - id:
-              createdTime: 1697661800159
+              createdTime: 1705269859421
               additionalInfo:
                 description: ''
                 layoutX: 887
@@ -732,14 +944,15 @@
               name: Add Customer Details
               debugMode: false
               singletonMode: false
+              configurationVersion: 1
               configuration:
                 detailsList:
                 - ID
                 - TITLE
-                addToMetadata: true
+                fetchTo: METADATA
               externalId:
             - id:
-              createdTime: 1697661800161
+              createdTime: 1705269859430
               additionalInfo:
                 description: 'Add empty strings if no customer was added. '
                 layoutX: 1072
@@ -749,6 +962,7 @@
               name: Add Customer Default Values
               debugMode: false
               singletonMode: false
+              configurationVersion: 0
               configuration:
                 scriptLang: JS
                 jsScript: |-
@@ -758,7 +972,7 @@
                 tbelScript: 'return {msg: msg, metadata: metadata, msgType: msgType};'
               externalId:
             - id:
-              createdTime: 1702151346270
+              createdTime: 1705269859434
               additionalInfo:
                 description: ''
                 layoutX: 1130
@@ -768,6 +982,7 @@
               name: Push to Kafka
               debugMode: false
               singletonMode: false
+              configurationVersion: 0
               configuration:
                 topicPattern: thing-describer
                 keyPattern:
