@@ -1,6 +1,6 @@
-# Thing Registry
+# Thingsboard Initialize
 
-Manages W3C Thing Descriptions
+Ansible playbook to initialize a new thingsboard instance
 
 ## Authors
 
