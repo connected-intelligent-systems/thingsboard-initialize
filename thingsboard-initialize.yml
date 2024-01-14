@@ -1,0 +1,121 @@
+---
+- name: Initialize Thingsboard
+  hosts: localhost
+  vars:
+    thingsboard_url: "{{ lookup('env', 'THINGSBOARD_URL') }}"
+    thingsboard_admin_username: "{{ lookup('env', 'THINGSBOARD_ADMIN_USERNAME') }}"
+    thingsboard_admin_password: "{{ lookup('env', 'THINGSBOARD_ADMIN_PASSWORD') }}"
+    thingsboard_token_signing_key: "{{ lookup('env', 'THINGSBOARD_JWT_SIGNING_KEY') }}"
+    oauth2_endpoint_scheme: "{{ lookup('env', 'THINGSBOARD_OAUTH2_SCHEME') }}"
+    oauth2_domain_name: "{{ lookup('env', 'THINGSBOARD_OAUTH2_DOMAIN_NAME') }}"
+    oauth2_customer_mapper_url: "{{ lookup('env', 'THINGSBOARD_OAUTH2_CUSTOM_MAPPER_URL') }}"
+    oauth2_client_id: "{{ lookup('env', 'THINGSBOARD_OAUTH2_CLIENT_ID') }}"
+    oauth2_client_secret: "{{ lookup('env', 'THINGSBOARD_OAUTH2_CLIENT_SECRET') }}"
+    oauth2_authorization_uri: "{{ lookup('env', 'THINGSBOARD_OAUTH2_AUTHORIZATION_URI') }}"
+    oauth2_access_token_uri: "{{ lookup('env', 'THINGSBOARD_OAUTH2_ACCESS_TOKEN_URI') }}"
+    oauth2_user_info_uri: "{{ lookup('env', 'THINGSBOARD_OAUTH2_USER_INFO_URI') }}"
+    oauth2_jwk_uri: "{{ lookup('env', 'THINGSBOARD_OAUTH2_JWK_URI') }}"
+    oauth2_login_button_label: "{{ lookup('env', 'THINGSBOARD_OAUTH2_LOGIN_BUTTON_LABEL') }}"
+    oauth2_user_creation: "{{ lookup('env', 'THINGSBOARD_OAUTH2_USER_CREATION') }}"
+    oauth2_activate_user: "{{ lookup('env', 'THINGSBOARD_OAUTH2_ACTIVATE_USER') }}"
+  tasks:
+    - name: Authenticate and get JWT token
+      uri:
+        url: "{{ thingsboard_url }}/api/auth/login"
+        method: POST
+        body_format: json
+        body: 
+          username: "{{ thingsboard_admin_username }}"
+          password: "{{ thingsboard_admin_password }}"
+        return_content: yes
+      register: auth_response
+
+    - name: Extract JWT token
+      set_fact:
+        jwt_token: "{{ auth_response.json.token }}"
+      when: auth_response.json.token is defined
+
+    - name: Change token signing key
+      uri:
+        url: "{{ thingsboard_url }}/api/admin/jwtSettings"
+        method: POST
+        body_format: json
+        body: 
+          tokenSigningKey: "{{ thingsboard_token_signing_key | b64encode }}"
+          tokenExpirationTime: 9000
+          refreshTokenExpTime: 604800
+          tokenIssuer: "thingsboard.io"
+        headers:
+          X-Authorization: "Bearer {{ jwt_token }}"
+        status_code: 200
+        return_content: yes
+      register: change_key_response
+      when: jwt_token is defined
+
+    - name: Fetching OAuth Settings
+      uri:
+        url: "{{ thingsboard_url }}/api/oauth2/config"
+        method: GET
+        headers:
+            X-Authorization: "Bearer {{ jwt_token }}"
+        status_code: 200
+        return_content: yes
+      register: oauth2_settings_response
+
+    - name: Check if domain was already added
+      set_fact:
+        oauth2_settings_exists: "{{ oauth2_settings_response.content | from_json | json_query(filter_domain_infos) | length > 0 }}"
+        oauth2_params_infos: "{{ oauth2_settings_response.content | from_json | json_query(get_oauth2_params_infos) }}"
+      vars:
+        filter_domain_infos: "oauth2ParamsInfos[*].domainInfos[?name==`thingsboard.mvp-ds.dev-prd01.fsn.iotx.materna.work`]"
+        get_oauth2_params_infos: "oauth2ParamsInfos[*]"
+
+    - name: Creating Endpoint Information
+      set_fact:
+        new_oauth2_endpoint:
+          domainInfos:
+          - scheme: "{{ oauth2_endpoint_scheme }}"
+            name: "{{ oauth2_domain_name }}"
+          mobileInfos: []
+          clientRegistrations:
+          - mapperConfig:
+              allowUserCreation: "{{ oauth2_user_creation | bool }}"
+              activateUser: "{{ oauth2_activate_user | bool }}"
+              type: CUSTOM
+              custom:
+                url: "{{ oauth2_customer_mapper_url }}"
+                sendToken: true
+            clientId: "{{ oauth2_client_id }}"
+            clientSecret: "{{ oauth2_client_secret }}"
+            authorizationUri: "{{ oauth2_authorization_uri }}"
+            accessTokenUri: "{{ oauth2_access_token_uri }}"
+            userInfoUri: "{{ oauth2_user_info_uri }}"
+            jwkSetUri: "{{ oauth2_jwk_uri }}"
+            scope:
+            - email
+            - openid
+            - profile
+            userNameAttributeName: email
+            clientAuthenticationMethod: POST
+            loginButtonLabel: "{{ oauth2_login_button_label }}"
+            loginButtonIcon:
+            platforms: []
+            additionalInfo:
+              providerName: Custom
+      when: oauth2_settings_exists == false
+
+    - name: Add oauth2 config
+      vars:
+        combined_oauth2_params_infos: "{{ oauth2_params_infos + [new_oauth2_endpoint] }}"
+      uri:
+        url: "{{ thingsboard_url }}/api/oauth2/config"
+        method: POST
+        body_format: json
+        body: 
+          enabled: true
+          oauth2ParamsInfos: "{{ combined_oauth2_params_infos }}"
+        headers:
+          X-Authorization: "Bearer {{ jwt_token }}"
+        status_code: 200
+        return_content: yes
+      when: oauth2_settings_exists == false
