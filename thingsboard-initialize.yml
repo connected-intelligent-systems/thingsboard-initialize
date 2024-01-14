@@ -3,21 +3,23 @@
   hosts: localhost
   vars:
     thingsboard_url: "{{ lookup('env', 'THINGSBOARD_URL') }}"
-    thingsboard_admin_username: "{{ lookup('env', 'THINGSBOARD_ADMIN_USERNAME') }}"
-    thingsboard_admin_password: "{{ lookup('env', 'THINGSBOARD_ADMIN_PASSWORD') }}"
-    thingsboard_token_signing_key: "{{ lookup('env', 'THINGSBOARD_JWT_SIGNING_KEY') }}"
-    oauth2_endpoint_scheme: "{{ lookup('env', 'THINGSBOARD_OAUTH2_SCHEME') }}"
-    oauth2_domain_name: "{{ lookup('env', 'THINGSBOARD_OAUTH2_DOMAIN_NAME') }}"
-    oauth2_customer_mapper_url: "{{ lookup('env', 'THINGSBOARD_OAUTH2_CUSTOM_MAPPER_URL') }}"
-    oauth2_client_id: "{{ lookup('env', 'THINGSBOARD_OAUTH2_CLIENT_ID') }}"
-    oauth2_client_secret: "{{ lookup('env', 'THINGSBOARD_OAUTH2_CLIENT_SECRET') }}"
-    oauth2_authorization_uri: "{{ lookup('env', 'THINGSBOARD_OAUTH2_AUTHORIZATION_URI') }}"
-    oauth2_access_token_uri: "{{ lookup('env', 'THINGSBOARD_OAUTH2_ACCESS_TOKEN_URI') }}"
-    oauth2_user_info_uri: "{{ lookup('env', 'THINGSBOARD_OAUTH2_USER_INFO_URI') }}"
-    oauth2_jwk_uri: "{{ lookup('env', 'THINGSBOARD_OAUTH2_JWK_URI') }}"
-    oauth2_login_button_label: "{{ lookup('env', 'THINGSBOARD_OAUTH2_LOGIN_BUTTON_LABEL') }}"
-    oauth2_user_creation: "{{ lookup('env', 'THINGSBOARD_OAUTH2_USER_CREATION') }}"
-    oauth2_activate_user: "{{ lookup('env', 'THINGSBOARD_OAUTH2_ACTIVATE_USER') }}"
+    sysadmin_username: "{{ lookup('env', 'SYSADMIN_USERNAME') }}"
+    sysadmin_password: "{{ lookup('env', 'SYSADMIN_PASSWORD') }}"
+    token_signing_key: "{{ lookup('env', 'JWT_SIGNING_KEY') }}"
+    tenant_name: "{{ lookup('env', 'TENANT_NAME') }}"
+    thing_desciber_kafka_servers: "{{ lookup('env', 'THING_DESCRIBER_KAFKA_SERVERS') }}"
+    oauth2_endpoint_scheme: "{{ lookup('env', 'OAUTH2_SCHEME') }}"
+    oauth2_domain_name: "{{ lookup('env', 'OAUTH2_DOMAIN_NAME') }}"
+    oauth2_customer_mapper_url: "{{ lookup('env', 'OAUTH2_CUSTOM_MAPPER_URL') }}"
+    oauth2_client_id: "{{ lookup('env', 'OAUTH2_CLIENT_ID') }}"
+    oauth2_client_secret: "{{ lookup('env', 'OAUTH2_CLIENT_SECRET') }}"
+    oauth2_authorization_uri: "{{ lookup('env', 'OAUTH2_AUTHORIZATION_URI') }}"
+    oauth2_access_token_uri: "{{ lookup('env', 'OAUTH2_ACCESS_TOKEN_URI') }}"
+    oauth2_user_info_uri: "{{ lookup('env', 'OAUTH2_USER_INFO_URI') }}"
+    oauth2_jwk_uri: "{{ lookup('env', 'OAUTH2_JWK_URI') }}"
+    oauth2_login_button_label: "{{ lookup('env', 'OAUTH2_LOGIN_BUTTON_LABEL') }}"
+    oauth2_user_creation: "{{ lookup('env', 'OAUTH2_USER_CREATION') }}"
+    oauth2_activate_user: "{{ lookup('env', 'OAUTH2_ACTIVATE_USER') }}"
   tasks:
     - name: Authenticate and get JWT token
       uri:
@@ -25,8 +27,8 @@
         method: POST
         body_format: json
         body: 
-          username: "{{ thingsboard_admin_username }}"
-          password: "{{ thingsboard_admin_password }}"
+          username: "{{ sysadmin_username }}"
+          password: "{{ sysadmin_password }}"
         return_content: yes
       register: auth_response
 
@@ -41,7 +43,7 @@
         method: POST
         body_format: json
         body: 
-          tokenSigningKey: "{{ thingsboard_token_signing_key | b64encode }}"
+          tokenSigningKey: "{{ token_signing_key | b64encode }}"
           tokenExpirationTime: 9000
           refreshTokenExpTime: 604800
           tokenIssuer: "thingsboard.io"
@@ -119,3 +121,719 @@
         status_code: 200
         return_content: yes
       when: oauth2_settings_exists == false
+
+    - name: Get tenants
+      uri:
+        url: "{{ thingsboard_url }}/api/tenantInfos?page=0&pageSize=1&textSearch={{ tenant_name }}"
+        method: GET
+        body_format: json
+        headers:
+          X-Authorization: "Bearer {{ jwt_token }}"
+        status_code: 200
+        return_content: yes
+      register: tenants
+      when: auth_response.json.token is defined
+
+    - name: Check tenants
+      set_fact:
+        tenant_exists: "{{ tenants.content | from_json | json_query(filter_tenants) | length == 1 }}"
+      vars:
+        filter_tenants: "data[?title==`{{ tenant_name }}`]"
+        filter_tenant_id: "data[?title==`{{ tenant_name }}`].id.id"
+      when: tenants is defined
+
+    - name: Create tenant
+      uri:
+        url: "{{ thingsboard_url }}/api/tenant"
+        method: POST
+        body_format: json
+        body: 
+          additionalInfo:
+          country:
+          state:
+          city:
+          address:
+          address2:
+          zip:
+          phone:
+          email:
+          title: "{{ tenant_name }}"
+          region: Global
+          name: "{{ tenant_name }}"
+        headers:
+          X-Authorization: "Bearer {{ jwt_token }}"
+        status_code: 200
+        return_content: yes
+      register: created_tenant
+      when: tenant_exists == false
+
+    - name: Create admin user
+      vars:
+        tenant_id: "{{ created_tenant.json.id.id }}"
+      uri:
+        url: "{{ thingsboard_url }}/api/user?sendActivationMail=false"
+        method: POST
+        body_format: json
+        body: 
+          tenantId:
+            id: "{{ tenant_id }}"
+            entityType: TENANT
+          email: default-setup-admin@local.de
+          authority: TENANT_ADMIN
+          additionalInfo: {}
+        headers:
+          X-Authorization: "Bearer {{ jwt_token }}"
+        status_code: 200
+        return_content: yes
+      register: created_user
+      when: tenant_exists == false
+
+    - name: Get admin token
+      vars: 
+        user_id: "{{ created_user.json.id.id }}"
+      uri:
+        url: "{{ thingsboard_url }}/api/user/{{ user_id }}/token"
+        method: GET
+        headers:
+          X-Authorization: "Bearer {{ jwt_token }}"
+        status_code: 200
+        return_content: yes
+      register: admin_tokenset
+      when: 
+      - created_user is defined
+      - tenant_exists == false
+
+    - name: Import rule chains
+      uri:
+        url: "{{ thingsboard_url }}/api/ruleChains/import?overwrite=true"
+        method: POST
+        body_format: json
+        body: 
+          ruleChains:
+          - id:
+              entityType: RULE_CHAIN
+              id: 4f791f00-b31f-11ee-924d-a56df7558169
+            createdTime: 1697661769797
+            additionalInfo:
+            tenantId:
+            name: Root Rule Chain
+            type: CORE
+            firstRuleNodeId:
+              entityType: RULE_NODE
+              id: e6ecb900-6df6-11ee-9f16-59245f967c10
+            root: true
+            debugMode: false
+            configuration:
+            externalId:
+          - id:
+              entityType: RULE_CHAIN
+              id: 4f791f01-b31f-11ee-924d-a56df7558169
+            createdTime: 1697661769899
+            additionalInfo:
+            tenantId:
+            name: Edge Root Rule Chain
+            type: EDGE
+            firstRuleNodeId:
+              entityType: RULE_NODE
+              id: e6f2d380-6df6-11ee-9f16-59245f967c10
+            root: true
+            debugMode: false
+            configuration:
+            externalId:
+          - id:
+              entityType: RULE_CHAIN
+              id: 4f791f02-b31f-11ee-924d-a56df7558169
+            createdTime: 1697661800067
+            additionalInfo:
+              description: ''
+            tenantId:
+            name: Thing Registry Sync
+            type: CORE
+            firstRuleNodeId:
+              entityType: RULE_NODE
+              id: f8f91580-6df6-11ee-9f16-59245f967c10
+            root: false
+            debugMode: false
+            configuration:
+            externalId:
+          metadata:
+          - ruleChainId:
+              entityType: RULE_CHAIN
+              id: 4f791f00-b31f-11ee-924d-a56df7558169
+            firstNodeIndex: 6
+            nodes:
+            - id:
+              createdTime: 1697661769846
+              additionalInfo:
+                description:
+                layoutX: 824
+                layoutY: 156
+              ruleChainId:
+              type: org.thingsboard.rule.engine.telemetry.TbMsgTimeseriesNode
+              name: Save Timeseries
+              debugMode: false
+              singletonMode: false
+              configuration:
+                defaultTTL: 0
+              externalId:
+            - id:
+              createdTime: 1697661769860
+              additionalInfo:
+                layoutX: 825
+                layoutY: 52
+              ruleChainId:
+              type: org.thingsboard.rule.engine.telemetry.TbMsgAttributesNode
+              name: Save Client Attributes
+              debugMode: false
+              singletonMode: false
+              configuration:
+                scope: CLIENT_SCOPE
+                notifyDevice: 'false'
+              externalId:
+            - id:
+              createdTime: 1697661769862
+              additionalInfo:
+                layoutX: 347
+                layoutY: 149
+              ruleChainId:
+              type: org.thingsboard.rule.engine.filter.TbMsgTypeSwitchNode
+              name: Message Type Switch
+              debugMode: false
+              singletonMode: false
+              configuration:
+                version: 0
+              externalId:
+            - id:
+              createdTime: 1697661769865
+              additionalInfo:
+                layoutX: 825
+                layoutY: 266
+              ruleChainId:
+              type: org.thingsboard.rule.engine.action.TbLogNode
+              name: Log RPC from Device
+              debugMode: false
+              singletonMode: false
+              configuration:
+                scriptLang: TBEL
+                jsScript: return '\nIncoming message:\n' + JSON.stringify(msg) + '\nIncoming
+                  metadata:\n' + JSON.stringify(metadata);
+                tbelScript: return '\nIncoming message:\n' + JSON.stringify(msg) + '\nIncoming
+                  metadata:\n' + JSON.stringify(metadata);
+              externalId:
+            - id:
+              createdTime: 1697661769867
+              additionalInfo:
+                layoutX: 825
+                layoutY: 379
+              ruleChainId:
+              type: org.thingsboard.rule.engine.action.TbLogNode
+              name: Log Other
+              debugMode: false
+              singletonMode: false
+              configuration:
+                scriptLang: TBEL
+                jsScript: return '\nIncoming message:\n' + JSON.stringify(msg) + '\nIncoming
+                  metadata:\n' + JSON.stringify(metadata);
+                tbelScript: return '\nIncoming message:\n' + JSON.stringify(msg) + '\nIncoming
+                  metadata:\n' + JSON.stringify(metadata);
+              externalId:
+            - id:
+              createdTime: 1697661769870
+              additionalInfo:
+                layoutX: 825
+                layoutY: 468
+              ruleChainId:
+              type: org.thingsboard.rule.engine.rpc.TbSendRPCRequestNode
+              name: RPC Call Request
+              debugMode: false
+              singletonMode: false
+              configuration:
+                timeoutInSeconds: 60
+              externalId:
+            - id:
+              createdTime: 1697661769872
+              additionalInfo:
+                description: Process incoming messages from devices with the alarm rules defined
+                  in the device profile. Dispatch all incoming messages with "Success" relation
+                  type.
+                layoutX: 204
+                layoutY: 240
+              ruleChainId:
+              type: org.thingsboard.rule.engine.profile.TbDeviceProfileNode
+              name: Device Profile Node
+              debugMode: false
+              singletonMode: false
+              configuration:
+                persistAlarmRulesState: false
+                fetchAlarmRulesStateOnStart: false
+              externalId:
+            - id:
+              createdTime: 1697661848082
+              additionalInfo:
+                description: ''
+                layoutX: 305
+                layoutY: 520
+              ruleChainId:
+              type: org.thingsboard.rule.engine.flow.TbRuleChainInputNode
+              name: Thing Registry Sync
+              debugMode: false
+              singletonMode: false
+              configuration:
+                ruleChainId: 4f791f02-b31f-11ee-924d-a56df7558169
+              externalId:
+            connections:
+            - fromIndex: 2
+              toIndex: 0
+              type: Post telemetry
+            - fromIndex: 2
+              toIndex: 1
+              type: Post attributes
+            - fromIndex: 2
+              toIndex: 3
+              type: RPC Request from Device
+            - fromIndex: 2
+              toIndex: 4
+              type: Other
+            - fromIndex: 2
+              toIndex: 5
+              type: RPC Request to Device
+            - fromIndex: 2
+              toIndex: 7
+              type: Attributes Deleted
+            - fromIndex: 2
+              toIndex: 7
+              type: Attributes Updated
+            - fromIndex: 2
+              toIndex: 7
+              type: Entity Assigned
+            - fromIndex: 2
+              toIndex: 7
+              type: Entity Deleted
+            - fromIndex: 2
+              toIndex: 7
+              type: Entity Unassigned
+            - fromIndex: 2
+              toIndex: 7
+              type: Post attributes
+            - fromIndex: 6
+              toIndex: 2
+              type: Success
+            ruleChainConnections:
+          - ruleChainId:
+              entityType: RULE_CHAIN
+              id: 4f791f01-b31f-11ee-924d-a56df7558169
+            firstNodeIndex: 0
+            nodes:
+            - id:
+              createdTime: 1697661769912
+              additionalInfo:
+                description: Process incoming messages from devices with the alarm rules defined
+                  in the device profile. Dispatch all incoming messages with "Success" relation
+                  type.
+                layoutX: 187
+                layoutY: 468
+              ruleChainId:
+              type: org.thingsboard.rule.engine.profile.TbDeviceProfileNode
+              name: Device Profile Node
+              debugMode: false
+              singletonMode: false
+              configuration:
+                persistAlarmRulesState: false
+                fetchAlarmRulesStateOnStart: false
+              externalId:
+            - id:
+              createdTime: 1697661769915
+              additionalInfo:
+                layoutX: 823
+                layoutY: 157
+              ruleChainId:
+              type: org.thingsboard.rule.engine.telemetry.TbMsgTimeseriesNode
+              name: Save Timeseries
+              debugMode: false
+              singletonMode: false
+              configuration:
+                defaultTTL: 0
+              externalId:
+            - id:
+              createdTime: 1697661769917
+              additionalInfo:
+                layoutX: 824
+                layoutY: 52
+              ruleChainId:
+              type: org.thingsboard.rule.engine.telemetry.TbMsgAttributesNode
+              name: Save Client Attributes
+              debugMode: false
+              singletonMode: false
+              configuration:
+                scope: CLIENT_SCOPE
+                notifyDevice: 'false'
+              externalId:
+            - id:
+              createdTime: 1697661769919
+              additionalInfo:
+                layoutX: 347
+                layoutY: 149
+              ruleChainId:
+              type: org.thingsboard.rule.engine.filter.TbMsgTypeSwitchNode
+              name: Message Type Switch
+              debugMode: false
+              singletonMode: false
+              configuration:
+                version: 0
+              externalId:
+            - id:
+              createdTime: 1697661769921
+              additionalInfo:
+                layoutX: 825
+                layoutY: 266
+              ruleChainId:
+              type: org.thingsboard.rule.engine.action.TbLogNode
+              name: Log RPC from Device
+              debugMode: false
+              singletonMode: false
+              configuration:
+                scriptLang: TBEL
+                jsScript: return '\nIncoming message:\n' + JSON.stringify(msg) + '\nIncoming
+                  metadata:\n' + JSON.stringify(metadata);
+                tbelScript: return '\nIncoming message:\n' + JSON.stringify(msg) + '\nIncoming
+                  metadata:\n' + JSON.stringify(metadata);
+              externalId:
+            - id:
+              createdTime: 1697661769923
+              additionalInfo:
+                layoutX: 824
+                layoutY: 378
+              ruleChainId:
+              type: org.thingsboard.rule.engine.action.TbLogNode
+              name: Log Other
+              debugMode: false
+              singletonMode: false
+              configuration:
+                scriptLang: TBEL
+                jsScript: return '\nIncoming message:\n' + JSON.stringify(msg) + '\nIncoming
+                  metadata:\n' + JSON.stringify(metadata);
+                tbelScript: return '\nIncoming message:\n' + JSON.stringify(msg) + '\nIncoming
+                  metadata:\n' + JSON.stringify(metadata);
+              externalId:
+            - id:
+              createdTime: 1697661769925
+              additionalInfo:
+                layoutX: 824
+                layoutY: 466
+              ruleChainId:
+              type: org.thingsboard.rule.engine.rpc.TbSendRPCRequestNode
+              name: RPC Call Request
+              debugMode: false
+              singletonMode: false
+              configuration:
+                timeoutInSeconds: 60
+              externalId:
+            - id:
+              createdTime: 1697661769927
+              additionalInfo:
+                layoutX: 1126
+                layoutY: 104
+              ruleChainId:
+              type: org.thingsboard.rule.engine.edge.TbMsgPushToCloudNode
+              name: Push to cloud
+              debugMode: false
+              singletonMode: false
+              configuration:
+                scope: SERVER_SCOPE
+              externalId:
+            - id:
+              createdTime: 1697661769929
+              additionalInfo:
+                layoutX: 826
+                layoutY: 601
+              ruleChainId:
+              type: org.thingsboard.rule.engine.edge.TbMsgPushToCloudNode
+              name: Push to cloud
+              debugMode: false
+              singletonMode: false
+              configuration:
+                scope: SERVER_SCOPE
+              externalId:
+            connections:
+            - fromIndex: 0
+              toIndex: 3
+              type: Success
+            - fromIndex: 1
+              toIndex: 7
+              type: Success
+            - fromIndex: 2
+              toIndex: 7
+              type: Success
+            - fromIndex: 3
+              toIndex: 1
+              type: Post telemetry
+            - fromIndex: 3
+              toIndex: 2
+              type: Post attributes
+            - fromIndex: 3
+              toIndex: 4
+              type: RPC Request from Device
+            - fromIndex: 3
+              toIndex: 5
+              type: Other
+            - fromIndex: 3
+              toIndex: 6
+              type: RPC Request to Device
+            - fromIndex: 3
+              toIndex: 8
+              type: Attributes Deleted
+            - fromIndex: 3
+              toIndex: 8
+              type: Attributes Updated
+            ruleChainConnections:
+          - ruleChainId:
+              entityType: RULE_CHAIN
+              id: 4f791f02-b31f-11ee-924d-a56df7558169
+            firstNodeIndex: 3
+            nodes:
+            - id:
+              createdTime: 1697661800141
+              additionalInfo:
+                description: ''
+                layoutX: 29
+                layoutY: 392
+              ruleChainId:
+              type: org.thingsboard.rule.engine.metadata.TbFetchDeviceCredentialsNode
+              name: Add Credentials
+              debugMode: false
+              singletonMode: false
+              configuration:
+                fetchToMetadata: true
+              externalId:
+            - id:
+              createdTime: 1697661800147
+              additionalInfo:
+                description: ''
+                layoutX: 335
+                layoutY: 448
+              ruleChainId:
+              type: org.thingsboard.rule.engine.metadata.TbGetOriginatorFieldsNode
+              name: Add Originator
+              debugMode: false
+              singletonMode: false
+              configuration:
+                fieldsMapping:
+                  name: originatorName
+                  type: originatorType
+                  id: originatorId
+                ignoreNullStrings: false
+              externalId:
+            - id:
+              createdTime: 1697661800150
+              additionalInfo:
+                description: ''
+                layoutX: 1240
+                layoutY: 526
+              ruleChainId:
+              type: org.thingsboard.rule.engine.metadata.TbGetTenantDetailsNode
+              name: Add Tenant Details
+              debugMode: false
+              singletonMode: false
+              configuration:
+                detailsList:
+                - TITLE
+                - ID
+                addToMetadata: true
+              externalId:
+            - id:
+              createdTime: 1697661800152
+              additionalInfo:
+                description: ''
+                layoutX: 300
+                layoutY: 152
+              ruleChainId:
+              type: org.thingsboard.rule.engine.filter.TbMsgTypeSwitchNode
+              name: Filter Messag Type
+              debugMode: false
+              singletonMode: false
+              configuration:
+                version: 0
+              externalId:
+            - id:
+              createdTime: 1697661800154
+              additionalInfo:
+                description: ''
+                layoutX: 900
+                layoutY: 152
+              ruleChainId:
+              type: org.thingsboard.rule.engine.filter.TbJsFilterNode
+              name: Filter Thing Model
+              debugMode: false
+              singletonMode: false
+              configuration:
+                scriptLang: JS
+                jsScript: |-
+                  if((msgType === "ATTRIBUTES_UPDATED" || msgType === "POST_ATTRIBUTES_REQUEST") && msg['thing-model'] !== undefined) {
+                      return true;
+                  } else if(msgType === "ATTRIBUTES_DELETED" && msg.attributes.includes('thing-model')) {
+                      return true;
+                  }
+
+                  return false;
+                tbelScript: return msg.temperature > 20;
+              externalId:
+            - id:
+              createdTime: 1697661800156
+              additionalInfo:
+                description: ''
+                layoutX: 864
+                layoutY: 307
+              ruleChainId:
+              type: org.thingsboard.rule.engine.transform.TbTransformMsgNode
+              name: Add Type To Metadata
+              debugMode: false
+              singletonMode: false
+              configuration:
+                scriptLang: JS
+                jsScript: |-
+                  metadata.messageType = msgType
+                  return {msg: msg, metadata: metadata, msgType: msgType};
+                tbelScript: 'return {msg: msg, metadata: metadata, msgType: msgType};'
+              externalId:
+            - id:
+              createdTime: 1697661800158
+              additionalInfo:
+                description: ''
+                layoutX: 632
+                layoutY: 495
+              ruleChainId:
+              type: org.thingsboard.rule.engine.metadata.TbGetAttributesNode
+              name: Add Attributes
+              debugMode: false
+              singletonMode: false
+              configuration:
+                tellFailureIfAbsent: false
+                fetchToData: true
+                clientAttributeNames:
+                - thing-model
+                - thing-metadata
+                sharedAttributeNames:
+                - thing-model
+                - thing-metadata
+                serverAttributeNames:
+                - thing-model
+                - thing-metadata
+                latestTsKeyNames: []
+                getLatestValueWithTs: false
+              externalId:
+            - id:
+              createdTime: 1697661800159
+              additionalInfo:
+                description: ''
+                layoutX: 887
+                layoutY: 528
+              ruleChainId:
+              type: org.thingsboard.rule.engine.metadata.TbGetCustomerDetailsNode
+              name: Add Customer Details
+              debugMode: false
+              singletonMode: false
+              configuration:
+                detailsList:
+                - ID
+                - TITLE
+                addToMetadata: true
+              externalId:
+            - id:
+              createdTime: 1697661800161
+              additionalInfo:
+                description: 'Add empty strings if no customer was added. '
+                layoutX: 1072
+                layoutY: 673
+              ruleChainId:
+              type: org.thingsboard.rule.engine.transform.TbTransformMsgNode
+              name: Add Customer Default Values
+              debugMode: false
+              singletonMode: false
+              configuration:
+                scriptLang: JS
+                jsScript: |-
+                  metadata.customer_id = ""
+                  metadata.customer_title = ""
+                  return {msg: msg, metadata: metadata, msgType: msgType};
+                tbelScript: 'return {msg: msg, metadata: metadata, msgType: msgType};'
+              externalId:
+            - id:
+              createdTime: 1702151346270
+              additionalInfo:
+                description: ''
+                layoutX: 1130
+                layoutY: 128
+              ruleChainId:
+              type: org.thingsboard.rule.engine.kafka.TbKafkaNode
+              name: Push to Kafka
+              debugMode: false
+              singletonMode: false
+              configuration:
+                topicPattern: thing-describer
+                keyPattern:
+                bootstrapServers: "{{ thing_desciber_kafka_servers }}"
+                retries: 0
+                batchSize: 16384
+                linger: 0
+                bufferMemory: 33554432
+                acks: "-1"
+                keySerializer: org.apache.kafka.common.serialization.StringSerializer
+                valueSerializer: org.apache.kafka.common.serialization.StringSerializer
+                otherProperties: {}
+                addMetadataKeyValuesAsKafkaHeaders: true
+                kafkaHeadersCharset: UTF-8
+              externalId:
+            connections:
+            - fromIndex: 0
+              toIndex: 1
+              type: Success
+            - fromIndex: 1
+              toIndex: 6
+              type: Success
+            - fromIndex: 2
+              toIndex: 9
+              type: Success
+            - fromIndex: 3
+              toIndex: 0
+              type: Entity Assigned
+            - fromIndex: 3
+              toIndex: 0
+              type: Entity Unassigned
+            - fromIndex: 3
+              toIndex: 4
+              type: Attributes Deleted
+            - fromIndex: 3
+              toIndex: 4
+              type: Attributes Updated
+            - fromIndex: 3
+              toIndex: 4
+              type: Post attributes
+            - fromIndex: 3
+              toIndex: 5
+              type: Entity Deleted
+            - fromIndex: 4
+              toIndex: 0
+              type: 'True'
+            - fromIndex: 5
+              toIndex: 7
+              type: Success
+            - fromIndex: 6
+              toIndex: 5
+              type: Success
+            - fromIndex: 7
+              toIndex: 2
+              type: Success
+            - fromIndex: 7
+              toIndex: 8
+              type: Failure
+            - fromIndex: 8
+              toIndex: 2
+              type: Success
+            ruleChainConnections:
+        headers:
+          X-Authorization: "Bearer {{ admin_tokenset.json.token }}"
+        status_code: 200
+        return_content: yes
+      when: 
+      - admin_tokenset is defined
+      - tenant_exists == false
