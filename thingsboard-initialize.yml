@@ -215,53 +215,37 @@
           ruleChains:
           - id:
               entityType: RULE_CHAIN
-              id: eb4a6bc0-b32c-11ee-a06b-2da4a5a81ce2
-            createdTime: 1705269957128
-            additionalInfo:
-              description: ''
-            tenantId:
-            name: Fuseki Customer Sync
-            type: CORE
-            firstRuleNodeId:
-              entityType: RULE_NODE
-              id: 319d1300-b32a-11ee-a06b-2da4a5a81ce2
-            root: false
-            debugMode: false
-            configuration:
-            externalId:
-          - id:
-              entityType: RULE_CHAIN
-              id: eb4a6bc1-b32c-11ee-a06b-2da4a5a81ce2
-            createdTime: 1705269857923
+              id: dee197d0-b3ab-11ee-a06b-2da4a5a81ce2
+            createdTime: 1705272918187
             additionalInfo:
             tenantId:
             name: Root Rule Chain
             type: CORE
             firstRuleNodeId:
               entityType: RULE_NODE
-              id: dd7b1980-b328-11ee-a06b-2da4a5a81ce2
+              id: fe4ce0b0-b32f-11ee-a06b-2da4a5a81ce2
             root: true
             debugMode: false
             configuration:
             externalId:
           - id:
               entityType: RULE_CHAIN
-              id: eb4a6bc2-b32c-11ee-a06b-2da4a5a81ce2
-            createdTime: 1705269857974
+              id: dee197d1-b3ab-11ee-a06b-2da4a5a81ce2
+            createdTime: 1705272918284
             additionalInfo:
             tenantId:
             name: Edge Root Rule Chain
             type: EDGE
             firstRuleNodeId:
               entityType: RULE_NODE
-              id: dd9afd90-b328-11ee-a06b-2da4a5a81ce2
+              id: fe79bd10-b32f-11ee-a06b-2da4a5a81ce2
             root: true
             debugMode: false
             configuration:
             externalId:
           - id:
               entityType: RULE_CHAIN
-              id: eb4a6bc3-b32c-11ee-a06b-2da4a5a81ce2
+              id: dee197d2-b3ab-11ee-a06b-2da4a5a81ce2
             createdTime: 1697661800067
             additionalInfo:
               description: ''
@@ -270,7 +254,7 @@
             type: CORE
             firstRuleNodeId:
               entityType: RULE_NODE
-              id: ddaadc10-b328-11ee-a06b-2da4a5a81ce2
+              id: feaa9110-b32f-11ee-a06b-2da4a5a81ce2
             root: false
             debugMode: false
             configuration:
@@ -278,154 +262,11 @@
           metadata:
           - ruleChainId:
               entityType: RULE_CHAIN
-              id: eb4a6bc0-b32c-11ee-a06b-2da4a5a81ce2
-            firstNodeIndex: 0
-            nodes:
-            - id:
-              createdTime: 1705270429744
-              additionalInfo:
-                description: ''
-                layoutX: 333
-                layoutY: 151
-              ruleChainId:
-              type: org.thingsboard.rule.engine.filter.TbOriginatorTypeFilterNode
-              name: Filter Customer Type
-              debugMode: false
-              singletonMode: false
-              configurationVersion: 0
-              configuration:
-                originatorTypes:
-                - CUSTOMER
-              externalId:
-            - id:
-              createdTime: 1705270823685
-              additionalInfo:
-                description: ''
-                layoutX: 915
-                layoutY: 321
-              ruleChainId:
-              type: org.thingsboard.rule.engine.rest.TbRestApiCallNode
-              name: Create Dataset
-              debugMode: false
-              singletonMode: false
-              configurationVersion: 1
-              configuration:
-                restEndpointUrlPattern: "{{ fuseki_url }}/$/datasets"
-                requestMethod: POST
-                useSimpleClientHttpFactory: false
-                parseToPlainText: true
-                ignoreRequestBody: false
-                enableProxy: false
-                useSystemProxyProperties: false
-                proxyScheme:
-                proxyHost:
-                proxyPort: 0
-                proxyUser:
-                proxyPassword:
-                readTimeoutMs: 0
-                maxParallelRequestsCount: 0
-                headers:
-                  Content-Type: application/x-www-form-urlencoded
-                useRedisQueueForMsgPersistence: false
-                trimQueue:
-                maxQueueSize:
-                credentials:
-                  type: basic
-                  username: "{{ fuseki_username }}"
-                  password: "{{ fuseki_password }}"
-              externalId:
-            - id:
-              createdTime: 1705270823692
-              additionalInfo:
-                description: ''
-                layoutX: 547
-                layoutY: 323
-              ruleChainId:
-              type: org.thingsboard.rule.engine.transform.TbTransformMsgNode
-              name: Set Payload
-              debugMode: false
-              singletonMode: false
-              configurationVersion: 0
-              configuration:
-                scriptLang: JS
-                jsScript: 'return {msg: `dbName={{ tenant_name }}-${metadata.entityName}&dbType=tdb2`,
-                  metadata: metadata, msgType: msgType};'
-                tbelScript: 'return {msg: "dbName={{ tenant_name }}-customer&dbType=tdb2", metadata: metadata,
-                  msgType: msgType};'
-              externalId:
-            - id:
-              createdTime: 1705270823695
-              additionalInfo:
-                description: ''
-                layoutX: 132
-                layoutY: 325
-              ruleChainId:
-              type: org.thingsboard.rule.engine.filter.TbMsgTypeSwitchNode
-              name: Filter Message Type
-              debugMode: false
-              singletonMode: false
-              configurationVersion: 0
-              configuration:
-                version: 0
-              externalId:
-            - id:
-              createdTime: 1705271456978
-              additionalInfo:
-                description: ''
-                layoutX: 550
-                layoutY: 493
-              ruleChainId:
-              type: org.thingsboard.rule.engine.rest.TbRestApiCallNode
-              name: Delete Dataset
-              debugMode: false
-              singletonMode: false
-              configurationVersion: 1
-              configuration:
-                restEndpointUrlPattern: "{{ fuseki_url }}/$/datasets/{{ tenant_name }}-${entityName}"
-                requestMethod: DELETE
-                useSimpleClientHttpFactory: false
-                parseToPlainText: false
-                ignoreRequestBody: false
-                enableProxy: false
-                useSystemProxyProperties: false
-                proxyScheme:
-                proxyHost:
-                proxyPort: 0
-                proxyUser:
-                proxyPassword:
-                readTimeoutMs: 0
-                maxParallelRequestsCount: 0
-                headers:
-                  Content-Type: application/x-www-form-urlencoded
-                useRedisQueueForMsgPersistence: false
-                trimQueue:
-                maxQueueSize:
-                credentials:
-                  type: basic
-                  username: "{{ fuseki_username }}"
-                  password: "{{ fuseki_password }}"
-              externalId:
-            connections:
-            - fromIndex: 0
-              toIndex: 3
-              type: 'True'
-            - fromIndex: 2
-              toIndex: 1
-              type: Success
-            - fromIndex: 3
-              toIndex: 2
-              type: Entity Created
-            - fromIndex: 3
-              toIndex: 4
-              type: Entity Deleted
-            ruleChainConnections:
-          - ruleChainId:
-              entityType: RULE_CHAIN
-              id: eb4a6bc1-b32c-11ee-a06b-2da4a5a81ce2
+              id: dee197d0-b3ab-11ee-a06b-2da4a5a81ce2
             firstNodeIndex: 6
             nodes:
             - id:
-              createdTime: 1705269859080
+              createdTime: 1705272920617
               additionalInfo:
                 description:
                 layoutX: 824
@@ -440,7 +281,7 @@
                 defaultTTL: 0
               externalId:
             - id:
-              createdTime: 1705269859083
+              createdTime: 1705272920620
               additionalInfo:
                 layoutX: 825
                 layoutY: 52
@@ -457,21 +298,22 @@
                 sendAttributesUpdatedNotification: false
               externalId:
             - id:
-              createdTime: 1705269859086
+              createdTime: 1705272920624
               additionalInfo:
+                description:
                 layoutX: 347
                 layoutY: 149
               ruleChainId:
               type: org.thingsboard.rule.engine.filter.TbMsgTypeSwitchNode
               name: Message Type Switch
-              debugMode: false
+              debugMode: true
               singletonMode: false
               configurationVersion: 0
               configuration:
                 version: 0
               externalId:
             - id:
-              createdTime: 1705269859089
+              createdTime: 1705272920627
               additionalInfo:
                 layoutX: 825
                 layoutY: 266
@@ -489,7 +331,7 @@
                   metadata:\n' + JSON.stringify(metadata);
               externalId:
             - id:
-              createdTime: 1705269859092
+              createdTime: 1705272920630
               additionalInfo:
                 layoutX: 825
                 layoutY: 379
@@ -507,7 +349,7 @@
                   metadata:\n' + JSON.stringify(metadata);
               externalId:
             - id:
-              createdTime: 1705269859094
+              createdTime: 1705272920633
               additionalInfo:
                 layoutX: 825
                 layoutY: 468
@@ -521,7 +363,7 @@
                 timeoutInSeconds: 60
               externalId:
             - id:
-              createdTime: 1705269859096
+              createdTime: 1705272920635
               additionalInfo:
                 description: Process incoming messages from devices with the alarm rules defined
                   in the device profile. Dispatch all incoming messages with "Success" relation
@@ -539,7 +381,7 @@
                 fetchAlarmRulesStateOnStart: false
               externalId:
             - id:
-              createdTime: 1705269859099
+              createdTime: 1705272920638
               additionalInfo:
                 description: ''
                 layoutX: 305
@@ -551,22 +393,7 @@
               singletonMode: false
               configurationVersion: 0
               configuration:
-                ruleChainId: eb4a6bc3-b32c-11ee-a06b-2da4a5a81ce2
-              externalId:
-            - id:
-              createdTime: 1705270312830
-              additionalInfo:
-                description: ''
-                layoutX: 583
-                layoutY: 665
-              ruleChainId:
-              type: org.thingsboard.rule.engine.flow.TbRuleChainInputNode
-              name: Fuseki Customer Sync
-              debugMode: false
-              singletonMode: false
-              configurationVersion: 0
-              configuration:
-                ruleChainId: eb4a6bc0-b32c-11ee-a06b-2da4a5a81ce2
+                ruleChainId: dee197d2-b3ab-11ee-a06b-2da4a5a81ce2
               externalId:
             connections:
             - fromIndex: 2
@@ -602,23 +429,17 @@
             - fromIndex: 2
               toIndex: 7
               type: Post attributes
-            - fromIndex: 2
-              toIndex: 8
-              type: Entity Created
-            - fromIndex: 2
-              toIndex: 8
-              type: Entity Deleted
             - fromIndex: 6
               toIndex: 2
               type: Success
             ruleChainConnections:
           - ruleChainId:
               entityType: RULE_CHAIN
-              id: eb4a6bc2-b32c-11ee-a06b-2da4a5a81ce2
+              id: dee197d1-b3ab-11ee-a06b-2da4a5a81ce2
             firstNodeIndex: 0
             nodes:
             - id:
-              createdTime: 1705269859305
+              createdTime: 1705272920929
               additionalInfo:
                 description: Process incoming messages from devices with the alarm rules defined
                   in the device profile. Dispatch all incoming messages with "Success" relation
@@ -636,7 +457,7 @@
                 fetchAlarmRulesStateOnStart: false
               externalId:
             - id:
-              createdTime: 1705269859308
+              createdTime: 1705272920942
               additionalInfo:
                 layoutX: 823
                 layoutY: 157
@@ -650,7 +471,7 @@
                 defaultTTL: 0
               externalId:
             - id:
-              createdTime: 1705269859316
+              createdTime: 1705272920956
               additionalInfo:
                 layoutX: 824
                 layoutY: 52
@@ -667,7 +488,7 @@
                 sendAttributesUpdatedNotification: false
               externalId:
             - id:
-              createdTime: 1705269859319
+              createdTime: 1705272920963
               additionalInfo:
                 layoutX: 347
                 layoutY: 149
@@ -681,7 +502,7 @@
                 version: 0
               externalId:
             - id:
-              createdTime: 1705269859321
+              createdTime: 1705272920980
               additionalInfo:
                 layoutX: 825
                 layoutY: 266
@@ -699,7 +520,7 @@
                   metadata:\n' + JSON.stringify(metadata);
               externalId:
             - id:
-              createdTime: 1705269859324
+              createdTime: 1705272920991
               additionalInfo:
                 layoutX: 824
                 layoutY: 378
@@ -717,7 +538,7 @@
                   metadata:\n' + JSON.stringify(metadata);
               externalId:
             - id:
-              createdTime: 1705269859327
+              createdTime: 1705272921005
               additionalInfo:
                 layoutX: 824
                 layoutY: 466
@@ -731,7 +552,7 @@
                 timeoutInSeconds: 60
               externalId:
             - id:
-              createdTime: 1705269859335
+              createdTime: 1705272921016
               additionalInfo:
                 layoutX: 1126
                 layoutY: 104
@@ -745,7 +566,7 @@
                 scope: SERVER_SCOPE
               externalId:
             - id:
-              createdTime: 1705269859338
+              createdTime: 1705272921027
               additionalInfo:
                 layoutX: 826
                 layoutY: 601
@@ -792,11 +613,11 @@
             ruleChainConnections:
           - ruleChainId:
               entityType: RULE_CHAIN
-              id: eb4a6bc3-b32c-11ee-a06b-2da4a5a81ce2
+              id: dee197d2-b3ab-11ee-a06b-2da4a5a81ce2
             firstNodeIndex: 3
             nodes:
             - id:
-              createdTime: 1705269859400
+              createdTime: 1705272921216
               additionalInfo:
                 description: ''
                 layoutX: 29
@@ -811,7 +632,7 @@
                 fetchTo: METADATA
               externalId:
             - id:
-              createdTime: 1705269859403
+              createdTime: 1705272921224
               additionalInfo:
                 description: ''
                 layoutX: 335
@@ -831,7 +652,7 @@
                 fetchTo: METADATA
               externalId:
             - id:
-              createdTime: 1705269859406
+              createdTime: 1705272921241
               additionalInfo:
                 description: ''
                 layoutX: 1240
@@ -849,7 +670,7 @@
                 fetchTo: METADATA
               externalId:
             - id:
-              createdTime: 1705269859409
+              createdTime: 1705272921249
               additionalInfo:
                 description: ''
                 layoutX: 300
@@ -864,7 +685,7 @@
                 version: 0
               externalId:
             - id:
-              createdTime: 1705269859412
+              createdTime: 1705272921260
               additionalInfo:
                 description: ''
                 layoutX: 900
@@ -888,7 +709,7 @@
                 tbelScript: return msg.temperature > 20;
               externalId:
             - id:
-              createdTime: 1705269859414
+              createdTime: 1705272921265
               additionalInfo:
                 description: ''
                 layoutX: 864
@@ -907,7 +728,7 @@
                 tbelScript: 'return {msg: msg, metadata: metadata, msgType: msgType};'
               externalId:
             - id:
-              createdTime: 1705269859417
+              createdTime: 1705272921273
               additionalInfo:
                 description: ''
                 layoutX: 632
@@ -934,7 +755,7 @@
                 fetchTo: DATA
               externalId:
             - id:
-              createdTime: 1705269859421
+              createdTime: 1705272921281
               additionalInfo:
                 description: ''
                 layoutX: 887
@@ -952,7 +773,7 @@
                 fetchTo: METADATA
               externalId:
             - id:
-              createdTime: 1705269859430
+              createdTime: 1705272921290
               additionalInfo:
                 description: 'Add empty strings if no customer was added. '
                 layoutX: 1072
@@ -972,7 +793,7 @@
                 tbelScript: 'return {msg: msg, metadata: metadata, msgType: msgType};'
               externalId:
             - id:
-              createdTime: 1705269859434
+              createdTime: 1705272921297
               additionalInfo:
                 description: ''
                 layoutX: 1130
