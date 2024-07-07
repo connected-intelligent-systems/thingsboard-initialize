@@ -6,10 +6,13 @@
     sysadmin_username: "{{ lookup('env', 'SYSADMIN_USERNAME') }}"
     sysadmin_password: "{{ lookup('env', 'SYSADMIN_PASSWORD') }}"
     token_signing_key: "{{ lookup('env', 'JWT_SIGNING_KEY') }}"
+    tenant_id: "{{ lookup('env', 'TENANT_ID') }}"
     tenant_name: "{{ lookup('env', 'TENANT_NAME') }}"
-    fuseki_username: "{{ lookup('env', 'FUSEKI_USERNAME') }}"
-    fuseki_password: "{{ lookup('env', 'FUSEKI_PASSWORD') }}"
-    fuseki_url: "{{ lookup('env', 'FUSEKI_URL') }}"
+    tenant_admin_user: "{{ lookup('env', 'TENANT_ADMIN_USER') }}"
+    keycloak_url: "{{ lookup('env', 'KEYCLOAK_URL') }}"
+    keycloak_realm: "{{ lookup('env', 'KEYCLOAK_REALM') }}"
+    keycloak_username: "{{ lookup('env', 'KEYCLOAK_USERNAME') }}"
+    keycloak_password: "{{ lookup('env', 'KEYCLOAK_PASSWORD') }}"
     thing_desciber_kafka_servers: "{{ lookup('env', 'THING_DESCRIBER_KAFKA_SERVERS') }}"
     oauth2_endpoint_scheme: "{{ lookup('env', 'OAUTH2_SCHEME') }}"
     oauth2_domain_name: "{{ lookup('env', 'OAUTH2_DOMAIN_NAME') }}"
@@ -40,7 +43,7 @@
         jwt_token: "{{ auth_response.json.token }}"
       when: auth_response.json.token is defined
 
-    - name: Change token signing key
+    - name: Change Token Signing Key
       uri:
         url: "{{ thingsboard_url }}/api/admin/jwtSettings"
         method: POST
@@ -57,7 +60,7 @@
       register: change_key_response
       when: jwt_token is defined
 
-    - name: Fetching OAuth Settings
+    - name: Fetching OAuth2 Settings
       uri:
         url: "{{ thingsboard_url }}/api/oauth2/config"
         method: GET
@@ -67,12 +70,12 @@
         return_content: yes
       register: oauth2_settings_response
 
-    - name: Check if domain was already added
+    - name: Check OAuth2 Settings Exists
       set_fact:
         oauth2_settings_exists: "{{ oauth2_settings_response.content | from_json | json_query(filter_domain_infos) | length > 0 }}"
         oauth2_params_infos: "{{ oauth2_settings_response.content | from_json | json_query(get_oauth2_params_infos) }}"
       vars:
-        filter_domain_infos: "oauth2ParamsInfos[*].domainInfos[?name==`thingsboard.mvp-ds.dev-prd01.fsn.iotx.materna.work`]"
+        filter_domain_infos: "oauth2ParamsInfos[*].domainInfos[?name==`{{ oauth2_domain_name }}`]"
         get_oauth2_params_infos: "oauth2ParamsInfos[*]"
 
     - name: Creating Endpoint Information
@@ -109,7 +112,7 @@
               providerName: Custom
       when: oauth2_settings_exists == false
 
-    - name: Add oauth2 config
+    - name: Add OAuth2 Configuration
       vars:
         combined_oauth2_params_infos: "{{ oauth2_params_infos + [new_oauth2_endpoint] }}"
       uri:
@@ -125,7 +128,7 @@
         return_content: yes
       when: oauth2_settings_exists == false
 
-    - name: Get tenants
+    - name: Get Tenants
       uri:
         url: "{{ thingsboard_url }}/api/tenantInfos?page=0&pageSize=1&textSearch={{ tenant_name }}"
         method: GET
@@ -135,23 +138,30 @@
         status_code: 200
         return_content: yes
       register: tenants
-      when: auth_response.json.token is defined
+      when: jwt_token is defined
 
-    - name: Check tenants
+    - name: Set Tenant Exists and Id Variables
       set_fact:
-        tenant_exists: "{{ tenants.content | from_json | json_query(filter_tenants) | length == 1 }}"
+        thingsboard_tenant_exists: "{{ tenants.content | from_json | json_query(filter_tenants) | length > 0 }}"
+        thingsboard_tenant_id: >-
+          {{
+            (tenants.content | from_json | json_query(filter_thingsboard_tenant_id) | first)
+            if (tenants.content | from_json | json_query(filter_tenants) | length > 0)
+            else None
+          }}
       vars:
-        filter_tenants: "data[?title==`{{ tenant_name }}`]"
-        filter_tenant_id: "data[?title==`{{ tenant_name }}`].id.id"
+        filter_tenants: "data"
+        filter_thingsboard_tenant_id: "data[*].id.id"
       when: tenants is defined
 
-    - name: Create tenant
+    - name: Create Thingsboard Tenant
       uri:
         url: "{{ thingsboard_url }}/api/tenant"
         method: POST
         body_format: json
         body: 
           additionalInfo:
+            tenant-id: "{{ tenant_id }}"
           country:
           state:
           city:
@@ -162,26 +172,62 @@
           email:
           title: "{{ tenant_name }}"
           region: Global
-          name: "{{ tenant_name }}"
         headers:
           X-Authorization: "Bearer {{ jwt_token }}"
         status_code: 200
         return_content: yes
       register: created_tenant
-      when: tenant_exists == false
+      when: thingsboard_tenant_exists == false
 
-    - name: Create admin user
+    - name: Set Tenant Id Variables
+      set_fact:
+        thingsboard_tenant_id: "{{ created_tenant.json.id.id }}"
+      when: created_tenant is defined and thingsboard_tenant_exists == false
+
+    - name: Add/Update Keycloak Tenant Admin Group
+      community.general.keycloak_group:
+        name: "{{ tenant_name }}-admins"
+        realm: "{{ keycloak_realm }}"
+        state: present
+        auth_client_id: admin-cli
+        auth_keycloak_url: "{{ keycloak_url }}"
+        auth_realm: master
+        auth_username: "{{ keycloak_username }}"
+        auth_password: "{{ keycloak_password }}"
+        attributes:
+          tenant-id: "{{ tenant_id }}"
+          thingsboard-tenant-id: "{{ thingsboard_tenant_id }}"
+      register: tenant_admin_group
+      delegate_to: localhost
+
+    - name: Get Thingsboard Admin User
+      uri:
+        url: "{{ thingsboard_url }}/api/tenant/{{ thingsboard_tenant_id }}/users?textSearch={{ tenant_admin_user }}&pageSize=1&page=0"
+        method: GET
+        headers:
+          X-Authorization: "Bearer {{ jwt_token }}"
+        status_code: 200
+        return_content: yes
+      register: admin_user
+
+    - name: Set Tenant Admin Exists and Id
+      set_fact:
+        admin_user_exists: "{{ admin_user.content | from_json | json_query(filter_admins) | length > 0 }}"
+        admin_user_id: "{{ (admin_user.content | from_json | json_query(filter_admin_user)) if (admin_user.content | from_json | json_query(filter_admins) | length > 0) else None }}"
       vars:
-        tenant_id: "{{ created_tenant.json.id.id }}"
+        filter_admins: "data"
+        filter_admin_user: "data[0].id.id"
+
+    - name: Create Thingsboard Admin User
       uri:
         url: "{{ thingsboard_url }}/api/user?sendActivationMail=false"
         method: POST
         body_format: json
         body: 
           tenantId:
-            id: "{{ tenant_id }}"
+            id: "{{ thingsboard_tenant_id }}"
             entityType: TENANT
-          email: default-setup-admin@local.de
+          email: "{{ tenant_admin_user }}"
           authority: TENANT_ADMIN
           additionalInfo: {}
         headers:
@@ -189,24 +235,24 @@
         status_code: 200
         return_content: yes
       register: created_user
-      when: tenant_exists == false
+      when: admin_user_exists == false
 
-    - name: Get admin token
-      vars: 
-        user_id: "{{ created_user.json.id.id }}"
+    - name: Set Tenant Admin
+      set_fact:
+        admin_user_id: "{{ created_user.json.id.id }}"
+      when: created_user is defined and admin_user_exists == false
+
+    - name: Get Thingsboard Admin Token
       uri:
-        url: "{{ thingsboard_url }}/api/user/{{ user_id }}/token"
+        url: "{{ thingsboard_url }}/api/user/{{ admin_user_id }}/token"
         method: GET
         headers:
           X-Authorization: "Bearer {{ jwt_token }}"
         status_code: 200
         return_content: yes
       register: admin_tokenset
-      when: 
-      - created_user is defined
-      - tenant_exists == false
 
-    - name: Import rule chains
+    - name: Import Rule Chains
       uri:
         url: "{{ thingsboard_url }}/api/ruleChains/import?overwrite=true"
         method: POST
@@ -215,63 +261,63 @@
           ruleChains:
           - id:
               entityType: RULE_CHAIN
-              id: dee197d0-b3ab-11ee-a06b-2da4a5a81ce2
+              id: 39822a40-3ab8-11ef-b4c5-3f775d85e6fa
             createdTime: 1705272918187
-            additionalInfo:
-            tenantId:
+            additionalInfo: 
+            tenantId: 
             name: Root Rule Chain
             type: CORE
             firstRuleNodeId:
               entityType: RULE_NODE
-              id: fe4ce0b0-b32f-11ee-a06b-2da4a5a81ce2
+              id: 13678e20-3ab5-11ef-b4c5-3f775d85e6fa
             root: true
             debugMode: false
-            configuration:
-            externalId:
+            configuration: 
+            externalId: 
           - id:
               entityType: RULE_CHAIN
-              id: dee197d1-b3ab-11ee-a06b-2da4a5a81ce2
+              id: 39822a41-3ab8-11ef-b4c5-3f775d85e6fa
             createdTime: 1705272918284
-            additionalInfo:
-            tenantId:
+            additionalInfo: 
+            tenantId: 
             name: Edge Root Rule Chain
             type: EDGE
             firstRuleNodeId:
               entityType: RULE_NODE
-              id: fe79bd10-b32f-11ee-a06b-2da4a5a81ce2
-            root: true
+              id: 136f2f40-3ab5-11ef-b4c5-3f775d85e6fa
+            root: false
             debugMode: false
-            configuration:
-            externalId:
+            configuration: 
+            externalId: 
           - id:
               entityType: RULE_CHAIN
-              id: dee197d2-b3ab-11ee-a06b-2da4a5a81ce2
+              id: 39822a42-3ab8-11ef-b4c5-3f775d85e6fa
             createdTime: 1697661800067
             additionalInfo:
               description: ''
-            tenantId:
+            tenantId: 
             name: Thing Registry Sync
             type: CORE
             firstRuleNodeId:
               entityType: RULE_NODE
-              id: feaa9110-b32f-11ee-a06b-2da4a5a81ce2
+              id: 13774590-3ab5-11ef-b4c5-3f775d85e6fa
             root: false
             debugMode: false
-            configuration:
-            externalId:
+            configuration: 
+            externalId: 
           metadata:
           - ruleChainId:
               entityType: RULE_CHAIN
-              id: dee197d0-b3ab-11ee-a06b-2da4a5a81ce2
+              id: 39822a40-3ab8-11ef-b4c5-3f775d85e6fa
             firstNodeIndex: 6
             nodes:
-            - id:
-              createdTime: 1705272920617
+            - id: 
+              createdTime: 1720173486073
               additionalInfo:
-                description:
+                description: 
                 layoutX: 824
                 layoutY: 156
-              ruleChainId:
+              ruleChainId: 
               type: org.thingsboard.rule.engine.telemetry.TbMsgTimeseriesNode
               name: Save Timeseries
               debugMode: false
@@ -279,13 +325,13 @@
               configurationVersion: 0
               configuration:
                 defaultTTL: 0
-              externalId:
-            - id:
-              createdTime: 1705272920620
+              externalId: 
+            - id: 
+              createdTime: 1720173486075
               additionalInfo:
                 layoutX: 825
                 layoutY: 52
-              ruleChainId:
+              ruleChainId: 
               type: org.thingsboard.rule.engine.telemetry.TbMsgAttributesNode
               name: Save Client Attributes
               debugMode: false
@@ -296,14 +342,14 @@
                 notifyDevice: false
                 updateAttributesOnlyOnValueChange: false
                 sendAttributesUpdatedNotification: false
-              externalId:
-            - id:
-              createdTime: 1705272920624
+              externalId: 
+            - id: 
+              createdTime: 1720173486076
               additionalInfo:
-                description:
+                description: 
                 layoutX: 347
                 layoutY: 149
-              ruleChainId:
+              ruleChainId: 
               type: org.thingsboard.rule.engine.filter.TbMsgTypeSwitchNode
               name: Message Type Switch
               debugMode: true
@@ -311,13 +357,13 @@
               configurationVersion: 0
               configuration:
                 version: 0
-              externalId:
-            - id:
-              createdTime: 1705272920627
+              externalId: 
+            - id: 
+              createdTime: 1720173486077
               additionalInfo:
                 layoutX: 825
                 layoutY: 266
-              ruleChainId:
+              ruleChainId: 
               type: org.thingsboard.rule.engine.action.TbLogNode
               name: Log RPC from Device
               debugMode: false
@@ -329,13 +375,13 @@
                   metadata:\n' + JSON.stringify(metadata);
                 tbelScript: return '\nIncoming message:\n' + JSON.stringify(msg) + '\nIncoming
                   metadata:\n' + JSON.stringify(metadata);
-              externalId:
-            - id:
-              createdTime: 1705272920630
+              externalId: 
+            - id: 
+              createdTime: 1720173486079
               additionalInfo:
                 layoutX: 825
                 layoutY: 379
-              ruleChainId:
+              ruleChainId: 
               type: org.thingsboard.rule.engine.action.TbLogNode
               name: Log Other
               debugMode: false
@@ -347,13 +393,13 @@
                   metadata:\n' + JSON.stringify(metadata);
                 tbelScript: return '\nIncoming message:\n' + JSON.stringify(msg) + '\nIncoming
                   metadata:\n' + JSON.stringify(metadata);
-              externalId:
-            - id:
-              createdTime: 1705272920633
+              externalId: 
+            - id: 
+              createdTime: 1720173486080
               additionalInfo:
                 layoutX: 825
                 layoutY: 468
-              ruleChainId:
+              ruleChainId: 
               type: org.thingsboard.rule.engine.rpc.TbSendRPCRequestNode
               name: RPC Call Request
               debugMode: false
@@ -361,16 +407,16 @@
               configurationVersion: 0
               configuration:
                 timeoutInSeconds: 60
-              externalId:
-            - id:
-              createdTime: 1705272920635
+              externalId: 
+            - id: 
+              createdTime: 1720173486082
               additionalInfo:
                 description: Process incoming messages from devices with the alarm rules defined
                   in the device profile. Dispatch all incoming messages with "Success" relation
                   type.
                 layoutX: 204
                 layoutY: 240
-              ruleChainId:
+              ruleChainId: 
               type: org.thingsboard.rule.engine.profile.TbDeviceProfileNode
               name: Device Profile Node
               debugMode: false
@@ -379,22 +425,22 @@
               configuration:
                 persistAlarmRulesState: false
                 fetchAlarmRulesStateOnStart: false
-              externalId:
-            - id:
-              createdTime: 1705272920638
+              externalId: 
+            - id: 
+              createdTime: 1720173486083
               additionalInfo:
                 description: ''
                 layoutX: 305
                 layoutY: 520
-              ruleChainId:
+              ruleChainId: 
               type: org.thingsboard.rule.engine.flow.TbRuleChainInputNode
               name: Thing Registry Sync
               debugMode: false
               singletonMode: false
               configurationVersion: 0
               configuration:
-                ruleChainId: dee197d2-b3ab-11ee-a06b-2da4a5a81ce2
-              externalId:
+                ruleChainId: 39822a42-3ab8-11ef-b4c5-3f775d85e6fa
+              externalId: 
             connections:
             - fromIndex: 2
               toIndex: 0
@@ -432,21 +478,21 @@
             - fromIndex: 6
               toIndex: 2
               type: Success
-            ruleChainConnections:
+            ruleChainConnections: 
           - ruleChainId:
               entityType: RULE_CHAIN
-              id: dee197d1-b3ab-11ee-a06b-2da4a5a81ce2
+              id: 39822a41-3ab8-11ef-b4c5-3f775d85e6fa
             firstNodeIndex: 0
             nodes:
-            - id:
-              createdTime: 1705272920929
+            - id: 
+              createdTime: 1720173486132
               additionalInfo:
                 description: Process incoming messages from devices with the alarm rules defined
                   in the device profile. Dispatch all incoming messages with "Success" relation
                   type.
                 layoutX: 187
                 layoutY: 468
-              ruleChainId:
+              ruleChainId: 
               type: org.thingsboard.rule.engine.profile.TbDeviceProfileNode
               name: Device Profile Node
               debugMode: false
@@ -455,13 +501,13 @@
               configuration:
                 persistAlarmRulesState: false
                 fetchAlarmRulesStateOnStart: false
-              externalId:
-            - id:
-              createdTime: 1705272920942
+              externalId: 
+            - id: 
+              createdTime: 1720173486134
               additionalInfo:
                 layoutX: 823
                 layoutY: 157
-              ruleChainId:
+              ruleChainId: 
               type: org.thingsboard.rule.engine.telemetry.TbMsgTimeseriesNode
               name: Save Timeseries
               debugMode: false
@@ -469,13 +515,13 @@
               configurationVersion: 0
               configuration:
                 defaultTTL: 0
-              externalId:
-            - id:
-              createdTime: 1705272920956
+              externalId: 
+            - id: 
+              createdTime: 1720173486135
               additionalInfo:
                 layoutX: 824
                 layoutY: 52
-              ruleChainId:
+              ruleChainId: 
               type: org.thingsboard.rule.engine.telemetry.TbMsgAttributesNode
               name: Save Client Attributes
               debugMode: false
@@ -486,13 +532,13 @@
                 notifyDevice: false
                 updateAttributesOnlyOnValueChange: false
                 sendAttributesUpdatedNotification: false
-              externalId:
-            - id:
-              createdTime: 1705272920963
+              externalId: 
+            - id: 
+              createdTime: 1720173486136
               additionalInfo:
                 layoutX: 347
                 layoutY: 149
-              ruleChainId:
+              ruleChainId: 
               type: org.thingsboard.rule.engine.filter.TbMsgTypeSwitchNode
               name: Message Type Switch
               debugMode: false
@@ -500,13 +546,13 @@
               configurationVersion: 0
               configuration:
                 version: 0
-              externalId:
-            - id:
-              createdTime: 1705272920980
+              externalId: 
+            - id: 
+              createdTime: 1720173486137
               additionalInfo:
                 layoutX: 825
                 layoutY: 266
-              ruleChainId:
+              ruleChainId: 
               type: org.thingsboard.rule.engine.action.TbLogNode
               name: Log RPC from Device
               debugMode: false
@@ -518,13 +564,13 @@
                   metadata:\n' + JSON.stringify(metadata);
                 tbelScript: return '\nIncoming message:\n' + JSON.stringify(msg) + '\nIncoming
                   metadata:\n' + JSON.stringify(metadata);
-              externalId:
-            - id:
-              createdTime: 1705272920991
+              externalId: 
+            - id: 
+              createdTime: 1720173486138
               additionalInfo:
                 layoutX: 824
                 layoutY: 378
-              ruleChainId:
+              ruleChainId: 
               type: org.thingsboard.rule.engine.action.TbLogNode
               name: Log Other
               debugMode: false
@@ -536,13 +582,13 @@
                   metadata:\n' + JSON.stringify(metadata);
                 tbelScript: return '\nIncoming message:\n' + JSON.stringify(msg) + '\nIncoming
                   metadata:\n' + JSON.stringify(metadata);
-              externalId:
-            - id:
-              createdTime: 1705272921005
+              externalId: 
+            - id: 
+              createdTime: 1720173486140
               additionalInfo:
                 layoutX: 824
                 layoutY: 466
-              ruleChainId:
+              ruleChainId: 
               type: org.thingsboard.rule.engine.rpc.TbSendRPCRequestNode
               name: RPC Call Request
               debugMode: false
@@ -550,13 +596,13 @@
               configurationVersion: 0
               configuration:
                 timeoutInSeconds: 60
-              externalId:
-            - id:
-              createdTime: 1705272921016
+              externalId: 
+            - id: 
+              createdTime: 1720173486141
               additionalInfo:
                 layoutX: 1126
                 layoutY: 104
-              ruleChainId:
+              ruleChainId: 
               type: org.thingsboard.rule.engine.edge.TbMsgPushToCloudNode
               name: Push to cloud
               debugMode: false
@@ -564,13 +610,13 @@
               configurationVersion: 0
               configuration:
                 scope: SERVER_SCOPE
-              externalId:
-            - id:
-              createdTime: 1705272921027
+              externalId: 
+            - id: 
+              createdTime: 1720173486142
               additionalInfo:
                 layoutX: 826
                 layoutY: 601
-              ruleChainId:
+              ruleChainId: 
               type: org.thingsboard.rule.engine.edge.TbMsgPushToCloudNode
               name: Push to cloud
               debugMode: false
@@ -578,7 +624,7 @@
               configurationVersion: 0
               configuration:
                 scope: SERVER_SCOPE
-              externalId:
+              externalId: 
             connections:
             - fromIndex: 0
               toIndex: 3
@@ -610,19 +656,19 @@
             - fromIndex: 3
               toIndex: 8
               type: Attributes Updated
-            ruleChainConnections:
+            ruleChainConnections: 
           - ruleChainId:
               entityType: RULE_CHAIN
-              id: dee197d2-b3ab-11ee-a06b-2da4a5a81ce2
-            firstNodeIndex: 3
+              id: 39822a42-3ab8-11ef-b4c5-3f775d85e6fa
+            firstNodeIndex: 2
             nodes:
-            - id:
-              createdTime: 1705272921216
+            - id: 
+              createdTime: 1720173486182
               additionalInfo:
                 description: ''
-                layoutX: 29
-                layoutY: 392
-              ruleChainId:
+                layoutX: 28
+                layoutY: 442
+              ruleChainId: 
               type: org.thingsboard.rule.engine.metadata.TbFetchDeviceCredentialsNode
               name: Add Credentials
               debugMode: false
@@ -630,14 +676,14 @@
               configurationVersion: 1
               configuration:
                 fetchTo: METADATA
-              externalId:
-            - id:
-              createdTime: 1705272921224
+              externalId: 
+            - id: 
+              createdTime: 1720173486183
               additionalInfo:
                 description: ''
-                layoutX: 335
-                layoutY: 448
-              ruleChainId:
+                layoutX: 321
+                layoutY: 443
+              ruleChainId: 
               type: org.thingsboard.rule.engine.metadata.TbGetOriginatorFieldsNode
               name: Add Originator
               debugMode: false
@@ -650,32 +696,14 @@
                   type: originatorType
                   id: originatorId
                 fetchTo: METADATA
-              externalId:
-            - id:
-              createdTime: 1705272921241
-              additionalInfo:
-                description: ''
-                layoutX: 1240
-                layoutY: 526
-              ruleChainId:
-              type: org.thingsboard.rule.engine.metadata.TbGetTenantDetailsNode
-              name: Add Tenant Details
-              debugMode: false
-              singletonMode: false
-              configurationVersion: 1
-              configuration:
-                detailsList:
-                - TITLE
-                - ID
-                fetchTo: METADATA
-              externalId:
-            - id:
-              createdTime: 1705272921249
+              externalId: 
+            - id: 
+              createdTime: 1720173486185
               additionalInfo:
                 description: ''
                 layoutX: 300
                 layoutY: 152
-              ruleChainId:
+              ruleChainId: 
               type: org.thingsboard.rule.engine.filter.TbMsgTypeSwitchNode
               name: Filter Messag Type
               debugMode: false
@@ -683,14 +711,14 @@
               configurationVersion: 0
               configuration:
                 version: 0
-              externalId:
-            - id:
-              createdTime: 1705272921260
+              externalId: 
+            - id: 
+              createdTime: 1720173486187
               additionalInfo:
                 description: ''
                 layoutX: 900
                 layoutY: 152
-              ruleChainId:
+              ruleChainId: 
               type: org.thingsboard.rule.engine.filter.TbJsFilterNode
               name: Filter Thing Model
               debugMode: false
@@ -707,33 +735,34 @@
 
                   return false;
                 tbelScript: return msg.temperature > 20;
-              externalId:
-            - id:
-              createdTime: 1705272921265
+              externalId: 
+            - id: 
+              createdTime: 1720173486188
               additionalInfo:
                 description: ''
                 layoutX: 864
                 layoutY: 307
-              ruleChainId:
+              ruleChainId: 
               type: org.thingsboard.rule.engine.transform.TbTransformMsgNode
-              name: Add Type To Metadata
+              name: Add Metadata
               debugMode: false
               singletonMode: false
               configurationVersion: 0
               configuration:
                 scriptLang: JS
                 jsScript: |-
-                  metadata.messageType = msgType
+                  metadata.messageType = msgType;
+                  metadata.tenant_id = "{{ tenant_id }}";
                   return {msg: msg, metadata: metadata, msgType: msgType};
                 tbelScript: 'return {msg: msg, metadata: metadata, msgType: msgType};'
-              externalId:
-            - id:
-              createdTime: 1705272921273
+              externalId: 
+            - id: 
+              createdTime: 1720173486189
               additionalInfo:
                 description: ''
-                layoutX: 632
-                layoutY: 495
-              ruleChainId:
+                layoutX: 610
+                layoutY: 441
+              ruleChainId: 
               type: org.thingsboard.rule.engine.metadata.TbGetAttributesNode
               name: Add Attributes
               debugMode: false
@@ -753,14 +782,14 @@
                 latestTsKeyNames: []
                 getLatestValueWithTs: false
                 fetchTo: DATA
-              externalId:
-            - id:
-              createdTime: 1705272921281
+              externalId: 
+            - id: 
+              createdTime: 1720173486190
               additionalInfo:
                 description: ''
-                layoutX: 887
-                layoutY: 528
-              ruleChainId:
+                layoutX: 881
+                layoutY: 439
+              ruleChainId: 
               type: org.thingsboard.rule.engine.metadata.TbGetCustomerDetailsNode
               name: Add Customer Details
               debugMode: false
@@ -769,36 +798,15 @@
               configuration:
                 detailsList:
                 - ID
-                - TITLE
                 fetchTo: METADATA
-              externalId:
-            - id:
-              createdTime: 1705272921290
-              additionalInfo:
-                description: 'Add empty strings if no customer was added. '
-                layoutX: 1072
-                layoutY: 673
-              ruleChainId:
-              type: org.thingsboard.rule.engine.transform.TbTransformMsgNode
-              name: Add Customer Default Values
-              debugMode: false
-              singletonMode: false
-              configurationVersion: 0
-              configuration:
-                scriptLang: JS
-                jsScript: |-
-                  metadata.customer_id = ""
-                  metadata.customer_title = ""
-                  return {msg: msg, metadata: metadata, msgType: msgType};
-                tbelScript: 'return {msg: msg, metadata: metadata, msgType: msgType};'
-              externalId:
-            - id:
-              createdTime: 1705272921297
+              externalId: 
+            - id: 
+              createdTime: 1720173486193
               additionalInfo:
                 description: ''
-                layoutX: 1130
-                layoutY: 128
-              ruleChainId:
+                layoutX: 1221
+                layoutY: 436
+              ruleChainId: 
               type: org.thingsboard.rule.engine.kafka.TbKafkaNode
               name: Push to Kafka
               debugMode: false
@@ -806,8 +814,8 @@
               configurationVersion: 0
               configuration:
                 topicPattern: thing-describer
-                keyPattern:
-                bootstrapServers: "{{ thing_desciber_kafka_servers }}"
+                keyPattern: 
+                bootstrapServers: kafka:9092
                 retries: 0
                 batchSize: 16384
                 linger: 0
@@ -818,58 +826,51 @@
                 otherProperties: {}
                 addMetadataKeyValuesAsKafkaHeaders: true
                 kafkaHeadersCharset: UTF-8
-              externalId:
+              externalId: 
             connections:
             - fromIndex: 0
               toIndex: 1
               type: Success
             - fromIndex: 1
-              toIndex: 6
+              toIndex: 5
               type: Success
             - fromIndex: 2
-              toIndex: 9
-              type: Success
-            - fromIndex: 3
               toIndex: 0
               type: Entity Assigned
-            - fromIndex: 3
+            - fromIndex: 2
               toIndex: 0
               type: Entity Unassigned
-            - fromIndex: 3
-              toIndex: 4
+            - fromIndex: 2
+              toIndex: 3
               type: Attributes Deleted
-            - fromIndex: 3
-              toIndex: 4
+            - fromIndex: 2
+              toIndex: 3
               type: Attributes Updated
-            - fromIndex: 3
-              toIndex: 4
+            - fromIndex: 2
+              toIndex: 3
               type: Post attributes
-            - fromIndex: 3
-              toIndex: 5
+            - fromIndex: 2
+              toIndex: 4
               type: Entity Deleted
-            - fromIndex: 4
+            - fromIndex: 3
               toIndex: 0
               type: 'True'
+            - fromIndex: 4
+              toIndex: 6
+              type: Success
             - fromIndex: 5
-              toIndex: 7
+              toIndex: 4
               type: Success
             - fromIndex: 6
-              toIndex: 5
-              type: Success
-            - fromIndex: 7
-              toIndex: 2
-              type: Success
-            - fromIndex: 7
-              toIndex: 8
+              toIndex: 7
               type: Failure
-            - fromIndex: 8
-              toIndex: 2
+            - fromIndex: 6
+              toIndex: 7
               type: Success
-            ruleChainConnections:
+            ruleChainConnections: 
         headers:
           X-Authorization: "Bearer {{ admin_tokenset.json.token }}"
         status_code: 200
         return_content: yes
       when: 
       - admin_tokenset is defined
-      - tenant_exists == false
