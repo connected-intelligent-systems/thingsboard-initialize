@@ -815,7 +815,7 @@
               configuration:
                 topicPattern: thing-describer
                 keyPattern: 
-                bootstrapServers: kafka:9092
+                bootstrapServers: "{{ thing_desciber_kafka_servers }}"
                 retries: 0
                 batchSize: 16384
                 linger: 0
