@@ -7,6 +7,7 @@
     sysadmin_password: "{{ lookup('env', 'SYSADMIN_PASSWORD') }}"
     token_signing_key: "{{ lookup('env', 'JWT_SIGNING_KEY') }}"
     tenant_name: "{{ lookup('env', 'TENANT_NAME') }}"
+    tenant_admin_user: "{{ lookup('env', 'TENANT_ADMIN_USER', default='default-setup-admin@local.de') }}"
     fuseki_username: "{{ lookup('env', 'FUSEKI_USERNAME') }}"
     fuseki_password: "{{ lookup('env', 'FUSEKI_PASSWORD') }}"
     fuseki_url: "{{ lookup('env', 'FUSEKI_URL') }}"
@@ -181,7 +182,7 @@
           tenantId:
             id: "{{ tenant_id }}"
             entityType: TENANT
-          email: default-setup-admin@local.de
+          email: "{{ tenant_admin_user }}"
           authority: TENANT_ADMIN
           additionalInfo: {}
         headers:
